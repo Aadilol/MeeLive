@@ -2,7 +2,7 @@
 
 ## Release status
 
-The release build now restricts GLB imports to embedded resources, serves dependencies and tracking models locally, generates security headers, limits imported model complexity and recording size, and lets users forget saved avatars. The browser preview verified the policy with a rigged avatar, a synthetic camera feed, local face and pose models, clip creation, and saved avatar removal. Verify the final HTTPS host and physical camera permissions after deployment. See [deployment instructions](README.md#deploy-publicly).
+The release build now restricts GLB imports to embedded resources, serves dependencies and tracking models locally, generates security headers, limits imported model complexity and recording size, and lets users forget saved avatars. The browser preview verified the policy with a rigged avatar, a synthetic camera feed, local face and pose models, clip creation, and saved avatar removal. Verify the final HTTPS host and physical camera permissions after deployment. See [deployment instructions](docs/usage-and-deployment.md#deploy-publicly).
 
 ## Original review
 
@@ -26,7 +26,7 @@ The import map loads Three.js from jsDelivr. The camera code dynamically loads M
 
 ### 3. Production security headers are unspecified
 
-The project documents a loopback development server and contains no production hosting configuration or CSP. The HTML includes an inline import map and startup block. These will need hashes or another compatible script policy when CSP is enforced. The absence of host configuration in the repository does not establish which headers a future host will send. [README.md, local server](README.md#L10) · [index.html, import map](index.html#L13) · [index.html, startup script](index.html#L119)
+The project documents a loopback development server and contains no production hosting configuration or CSP. The HTML includes an inline import map and startup block. These will need hashes or another compatible script policy when CSP is enforced. The absence of host configuration in the repository does not establish which headers a future host will send. [Local preview](docs/usage-and-deployment.md#run-locally) · [index.html, import map](index.html#L13) · [index.html, startup script](index.html#L119)
 
 **Fix before public launch.** Use an HTTPS static host, publish only the app files and assets, and keep `.git` and local files out of the web root. Deliver a CSP via HTTP headers with restricted script and network sources and `frame-ancestors 'none'` for the standalone studio. Set `Permissions-Policy: camera=(self), microphone=()` and `X-Content-Type-Options: nosniff`. Verify the actual response headers and exercise camera start and stop, model imports with compression, and recording under the policy. Avoid enabling unrestricted inline JavaScript or `unsafe-eval` to make the policy pass. [Content Security Policy](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CSP) · [Camera secure-context requirements](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia)
 
@@ -40,7 +40,7 @@ The whole selected file is read into memory without a size limit. Recording appe
 
 ### 5. The last avatar persists in the browser profile
 
-The app saves the entire selected file and associated settings to IndexedDB. It reloads the avatar on later visits from the same origin. Someone sharing that browser profile can see it. Clearing the site's data removes this saved copy. [app.js, saved avatar](app.js#L530) · [README.md, browser persistence](README.md#L38)
+The app saves the entire selected file and associated settings to IndexedDB. It reloads the avatar on later visits from the same origin. Someone sharing that browser profile can see it. Clearing the site's data removes this saved copy. [app.js, saved avatar](app.js#L530) · [Browser persistence](docs/usage-and-deployment.md#framing-and-window-view)
 
 **Fix.** Disclose persistence where models are selected and provide a way to clear the saved avatar, especially if the app will be used on shared devices.
 

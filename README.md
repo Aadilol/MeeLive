@@ -1,54 +1,121 @@
 # MeeLive
 
-MeeLive animates a `.glb` avatar with your webcam and displays it in a resizable browser preview.
+MeeLive is a browser-based avatar studio that turns webcam motion into a live 3D avatar preview with optional clip recording. Avatar files, motion tracking, and recording stay on your device.
 
-See the [C4 architecture](docs/architecture/c4-context.md) for the browser components, live tracking flow, and deployment.
+With Node.js 22 or newer, run `npm ci --ignore-scripts` followed by `npm run build` to create `dist/` (see the [usage and deployment guide](docs/usage-and-deployment.md)).
 
-## Run locally
+## System context
 
-Install Node.js 22 or newer. From this folder, build the static site and preview it on your machine.
+```mermaid
+C4Context
+  title System context for MeeLive
 
-```sh
-npm ci --ignore-scripts
-npm run build
-npm run preview
+  Person(presenter, "Presenter", "Animates an avatar on their own device")
+  System(meelive, "MeeLive", "Renders a live avatar and saves optional clips")
+  System_Ext(creator, "Mii Creator", "Optional source of avatar GLB files")
+  System_Ext(webcam, "Webcam", "Provides a live video feed")
+
+  Rel(presenter, creator, "Creates and exports an avatar", "Web / GLB")
+  Rel(presenter, meelive, "Selects an avatar and controls tracking", "Browser UI")
+  Rel(meelive, webcam, "Requests video access", "getUserMedia")
+
+  UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")
 ```
 
-On Windows, use `npm.cmd` if PowerShell blocks the npm script launcher. Open [the MeeLive studio](http://127.0.0.1:8000/). Use the same host and port each time to retain your saved avatar and settings. Building needs internet access the first time to fetch and verify dependencies. The built studio loads its scripts, fonts, and tracking models from the same site and processes webcam frames and avatars in your browser.
+## Containers
 
-## Deploy publicly
+```mermaid
+C4Container
+  title Containers for MeeLive
 
-### Vercel
+  Person(presenter, "Presenter", "Opens MeeLive and controls the avatar")
 
-Import the repository as a Vercel project. The included `vercel.json` selects the **Other** framework preset, runs the static build, publishes `dist/`, and applies the security headers. Use the HTTPS deployment URL Vercel provides, then check avatar import, camera start and stop, Full body, and clip download there. [Vercel project configuration](https://vercel.com/docs/project-configuration/vercel-json)
+  System_Boundary(meelive, "MeeLive") {
+    Container(studio, "Browser studio", "JavaScript and WebGL", "Loads avatars, tracks motion, and renders clips")
+    Container(staticSite, "Static site", "HTTPS static hosting", "Serves the release bundle and response headers")
+    ContainerDb(profile, "Saved avatar", "Browser IndexedDB", "Stores the last GLB and studio settings")
+  }
 
-### Cloudflare Pages
+  Rel(presenter, studio, "Loads a GLB and starts tracking", "Browser UI")
+  Rel(studio, staticSite, "Loads the studio files and tracking models", "HTTPS")
+  Rel(studio, profile, "Restores, saves, and clears the last avatar", "IndexedDB")
 
-1. Run `npm ci --ignore-scripts`, `npm test`, and `npm run build`.
-2. Use **Cloudflare Pages Direct Upload** to upload the generated `dist/` directory. For Git-based Pages builds, use `npm run build` as the build command and `dist` as the output directory, with Node.js 22 or newer. Use the HTTPS URL Pages provides. [Cloudflare Pages Direct Upload](https://developers.cloudflare.com/pages/get-started/direct-upload/) · [Cloudflare Pages headers](https://developers.cloudflare.com/pages/configuration/headers/)
-3. On the public URL, verify camera start and stop, avatar import, Full body, and clip download. Inspect the document response for the Content Security Policy and Permissions Policy from `dist/_headers`. On other hosts, configure those headers explicitly if the host does not read `_headers`.
+  UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
+```
 
-Publish only `dist/`. It contains the app, bundled assets, and dependency licenses. npm downloads are pinned by the lockfile. The build verifies the SHA-256 of the two MediaPipe model files and their upstream license before copying them into the release.
+## Browser studio components
 
-## Load and track an avatar
+```mermaid
+C4Component
+  title Components of the MeeLive browser studio
 
-1. Pick or drop a glTF 2.0 `.glb` of up to 64 MiB with self-contained meshes and textures. MeeLive looks for `Head` or `miiHead`, ignoring case. Use the node picker to choose a different head joint.
-2. Drag the preview to orbit and scroll to zoom. MeeLive uses glTF’s +Z direction as the initial front. For a model facing a different direction, orbit to face it and click **Set front**. **Reset preview** returns to the saved angle and automatic crop.
-3. Click **Start tracking**, grant the browser camera access, and hold a straight-ahead pose for about a second. The webcam thumbnail is mirrored. Turn left and right, nod, and tilt to check that the avatar follows. Use **Recalibrate** after shifting your resting position.
-4. For a quick standalone clip, click **Start recording**, **Stop recording**, then **Download clip**. The clip contains the avatar canvas without microphone audio. Recordings have a five-minute limit and a 128 MiB memory limit. The browser selects the video format and controls whether the recording retains alpha.
+  Container_Boundary(studio, "Browser studio") {
+    Component(controller, "Studio controller", "app.js", "Handles controls and the avatar lifecycle")
+    Component(importer, "Model import", "glb.js and GLTFLoader", "Validates and loads self-contained GLBs")
+    Component(storage, "Session persistence", "app.js and IndexedDB", "Restores, saves, and forgets the last avatar")
+    Component(tracking, "Webcam tracking", "app.js and MediaPipe", "Calibrates and estimates face and pose motion")
+    Component(body, "Body motion", "avatar-motion.js", "Finds or builds rigs and animates joints")
+    Component(mouth, "Mouth motion", "mouth-motion.js", "Selects textures from webcam expression signals")
+    Component(rendering, "Avatar rendering", "app.js and Three.js", "Frames, smooths, and draws the avatar")
+    Component(recording, "Clip recording", "app.js and MediaRecorder", "Records the canvas as a downloadable clip")
+  }
 
-### Mouth and upper body
+  Rel(controller, importer, "Validates and loads the selected file")
+  Rel(controller, storage, "Restores and saves model settings")
+  Rel(controller, tracking, "Starts, calibrates, and stops the webcam")
+  Rel(importer, rendering, "Supplies the avatar scene graph")
+  Rel(tracking, rendering, "Sets the head rotation target", "Quaternion")
+  Rel(tracking, body, "Supplies upper-body landmarks")
+  Rel(tracking, mouth, "Supplies face scores and landmarks")
+  Rel(body, rendering, "Updates spine and arm joints")
+  Rel(mouth, rendering, "Swaps the mask texture or overlay")
+  Rel(recording, rendering, "Captures the avatar canvas", "MediaStream")
 
-- Compatible Mii models without a mouth show a neutral black line at rest. The line swaps to a moving mouth during tracking. Models with an existing mouth keep it at rest. Other GLBs can use an empty `Mouth` or `Lips` locator to position the neutral line and moving mouth automatically. Head-only Mii exports get a simple rigged torso and arms. [MediaPipe Face Landmarker](https://developers.google.com/edge/mediapipe/solutions/vision/face_landmarker?tab=Web)
-- If the model’s mouth has no detectable anchor, face the model toward the preview, choose **Place mouth**, and click the center of its existing mouth. Use **Move mouth** to override automatic placement. Adjust **Mouth size** while tracking is stopped. **Clear placement** restores automatic placement when available.
-- Mouth tracking can show a closed smile, a frown, a rounded O-mouth, and small or wide openings. Relax your mouth to return to the resting shape.
-- **Track upper body** is on by default for supported models. Sit upright while calibrating. Keep your shoulders in view for lean and tilt, and bring elbows and wrists into view to animate the arms. Occluded joints ease back to their idle pose. [MediaPipe Pose Landmarker](https://developers.google.com/edge/mediapipe/solutions/vision/pose_landmarker?tab=Web)
-- Imported full-body GLBs can use their own skinned spine and arm bones when they use recognizable names, for example `Spine_1`, `LeftArm`, `LeftForeArm`, and `LeftHand`. Other models continue to use head tracking.
+  UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
+```
 
-## Framing and window view
+## Live tracking flow
 
-- Choose **Bust** to crop below the shoulders or **Full body** to fit all available geometry. A head-only model or generated torso shows the parts it has in **Full body**.
-- Resize the browser window to fit your recording area. The preview refits the selected framing after resizing.
-- Click **Fill window** to show just the avatar and its blue background inside the resizable browser window. Press **Esc** or **F**, or double-click the preview, to restore the studio controls.
+```mermaid
+C4Dynamic
+  title Live tracking and clip capture in MeeLive
 
-MeeLive saves the uploaded avatar, selected head node, front angle, upper-body setting, and framing in the browser profile. Click **Forget saved avatar** to clear the saved copy and keep using the current avatar until you leave the page.
+  Person(presenter, "Presenter", "Loads an avatar and starts tracking")
+  System_Ext(webcam, "Webcam", "Produces video frames")
+  Container_Boundary(studio, "Browser studio") {
+    Component(controller, "Studio controller", "app.js", "Owns the webcam stream and calibration")
+    Component(tracking, "Webcam tracking", "MediaPipe Tasks Vision", "Estimates face and optional upper-body motion")
+    Component(rendering, "Avatar canvas", "Three.js", "Draws the current avatar pose")
+    Component(recording, "Clip recorder", "MediaRecorder", "Encodes the canvas stream on request")
+  }
+
+  Rel(presenter, controller, "1. Starts tracking after loading a GLB", "Browser UI")
+  Rel(controller, webcam, "2. Requests video access", "getUserMedia")
+  Rel(webcam, tracking, "3. Provides frames through the video element", "MediaStream")
+  Rel(tracking, rendering, "4. Updates the head, mouth, and available joints", "Pose and expression signals")
+  Rel(rendering, recording, "5. Supplies rendered frames when recording", "Canvas MediaStream")
+  Rel(recording, presenter, "6. Offers the finished clip for download", "WebM or MP4")
+
+  UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")
+```
+
+## Vercel deployment
+
+```mermaid
+C4Deployment
+  title MeeLive production deployment target on Vercel
+
+  Deployment_Node(vercel, "Vercel", "Build and static hosting", "Builds and serves the release") {
+    Container(staticSite, "Static site", "dist directory and HTTPS", "Serves the studio with security headers")
+  }
+
+  Deployment_Node(device, "Presenter's device", "Webcam and local browser", "Runs the interactive studio") {
+    Container(studio, "Browser studio", "JavaScript, WASM, and WebGL", "Tracks motion and renders the avatar")
+    ContainerDb(profile, "Saved avatar", "Origin-scoped IndexedDB", "Stores one avatar and its settings")
+  }
+
+  Rel(studio, staticSite, "Loads the page, scripts, fonts, and models", "HTTPS")
+  Rel(studio, profile, "Reads and writes avatar data", "IndexedDB")
+
+  UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="2")
+```
