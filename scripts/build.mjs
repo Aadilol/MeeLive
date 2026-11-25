@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { copyFile, cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { copyFile, cp, lstat, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -74,24 +74,17 @@ async function download({ file, url, sha256 }) {
   await writeFile(localFile, bytes);
 }
 
-function securityHeaders(html) {
+function securityHeaders(html, headers) {
   const importMap = /<script type="importmap">([\s\S]+?)<\/script>/.exec(html)?.[1];
   if (!importMap) throw new Error('The import map is missing.');
-  const hash = createHash('sha256').update(importMap).digest('base64');
-  const policy = [
-    "default-src 'none'", `script-src 'self' 'wasm-unsafe-eval' 'sha256-${hash}'`,
-    "style-src 'self'", "font-src 'self'", "img-src 'self' blob: data:", "connect-src 'self' blob: data:",
-    "media-src 'self' blob:", "worker-src 'self' blob:", "object-src 'none'", "base-uri 'none'",
-    "frame-ancestors 'none'", "form-action 'none'",
-  ].join('; ');
-  return `/*
-  Content-Security-Policy: ${policy}
-  Permissions-Policy: camera=(self), microphone=(), geolocation=()
-  Referrer-Policy: no-referrer
-  X-Content-Type-Options: nosniff
-  X-Frame-Options: DENY
-  Cache-Control: no-cache
-`;
+  const hash = `'sha256-${createHash('sha256').update(importMap).digest('base64')}'`;
+  const policy = headers.find(({ key }) => key === 'Content-Security-Policy')?.value;
+  const scriptSources = policy?.split(';').map((directive) => directive.trim().split(/\s+/))
+    .find(([name]) => name === 'script-src');
+  if (!scriptSources?.includes(hash)) {
+    throw new Error(`Update the import map hash in vercel.json to ${hash}.`);
+  }
+  return `/*\n${headers.map(({ key, value }) => `  ${key}: ${value}`).join('\n')}\n`;
 }
 
 await mkdir(cache, { recursive: true });
@@ -113,10 +106,17 @@ try {
   }
 
   const html = (await readFile(join(staging, 'index.html'), 'utf8')).replaceAll('\r\n', '\n');
+  const vercel = JSON.parse(await readFile(join(root, 'vercel.json'), 'utf8'));
+  const headers = vercel.headers.find(({ source }) => source === '/:path*')?.headers;
+  if (!headers) throw new Error('Missing the site-wide security headers in vercel.json.');
   await writeFile(join(staging, 'index.html'), html);
-  await writeFile(join(staging, '_headers'), securityHeaders(html));
-  // Both paths are fixed children of the project root. The staging tree contains only the release allowlist.
-  await rm(dist, { recursive: true, force: true });
+  await writeFile(join(staging, '_headers'), securityHeaders(html, headers));
+  // Preserve the output directory so a Windows terminal or preview can keep it open during builds.
+  await mkdir(dist, { recursive: true });
+  if (!(await lstat(dist)).isDirectory()) throw new Error('dist must be a directory inside the project.');
+  for (const entry of await readdir(dist)) {
+    await rm(join(dist, entry), { recursive: true, force: true, maxRetries: 3 });
+  }
   await cp(staging, dist, { recursive: true });
   console.log('Built MeeLive into dist/.');
 } finally {

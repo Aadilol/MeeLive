@@ -16,6 +16,12 @@ On Windows, use `npm.cmd` if PowerShell blocks the npm script launcher. Open [th
 
 ## Deploy publicly
 
+### Vercel
+
+Import the repository as a Vercel project. The included `vercel.json` selects the **Other** framework preset, runs the static build, publishes `dist/`, and applies the security headers. Use the HTTPS deployment URL Vercel provides, then check avatar import, camera start and stop, Full body, and clip download there. [Vercel project configuration](https://vercel.com/docs/project-configuration/vercel-json)
+
+### Cloudflare Pages
+
 1. Run `npm ci --ignore-scripts`, `npm test`, and `npm run build`.
 2. Use **Cloudflare Pages Direct Upload** to upload the generated `dist/` directory. For Git-based Pages builds, use `npm run build` as the build command and `dist` as the output directory, with Node.js 22 or newer. Use the HTTPS URL Pages provides. [Cloudflare Pages Direct Upload](https://developers.cloudflare.com/pages/get-started/direct-upload/) · [Cloudflare Pages headers](https://developers.cloudflare.com/pages/configuration/headers/)
 3. On the public URL, verify camera start and stop, avatar import, Full body, and clip download. Inspect the document response for the Content Security Policy and Permissions Policy from `dist/_headers`. On other hosts, configure those headers explicitly if the host does not read `_headers`.

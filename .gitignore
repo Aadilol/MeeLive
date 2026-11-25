@@ -2,3 +2,4 @@
 /dist/
 /.release-cache/
 /.meelive-build-*/
+/.vercel/
