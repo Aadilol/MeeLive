@@ -2,6 +2,8 @@
 
 MeeLive animates a `.glb` avatar with your webcam and displays it in a resizable browser preview.
 
+See the [C4 architecture](docs/architecture/c4-context.md) for the browser components, live tracking flow, and deployment.
+
 ## Run locally
 
 Install Node.js 22 or newer. From this folder, build the static site and preview it on your machine.
